@@ -1,0 +1,112 @@
+---
+title: "Quality of Exercise - Practical Machine Learning"
+author: "Dylan Woon"
+date: "July 14, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks.
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set.
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+## Getting and preprocessing data
+
+```{r, echo = TRUE}
+# set directory
+setwd("~/R directory/Coursera Assignment/[Coursera] Module 8 Week 4")
+
+# load data
+train <- read.csv("train.csv", na.strings = c("#DIV/0!"), row.names = 1)
+test <- read.csv("test.csv", na.strings = c("#DIV/0!"), row.names = 1)
+
+# load libraries
+library(ggplot2) # data visualization
+library(caret) # machine learning
+library(randomForest) # machine learning
+library(e1071) # machine learning
+library(gbm) # machine learning
+library(doParallel) # machine learning
+library(survival) # machine learning
+library(splines)
+library(plyr) # data manipulation
+
+# remove the first 5 columns as they don't contain meaningful data 
+train <- train[, 6:dim(train)[2]]
+test <- test[, 6:dim(test)[2]]
+
+# for training data, remove columns with more than 95% of NA or empty values
+threshold <- dim(train)[1] * 0.95
+below.threshold <- !apply(train, 2, function(x) sum(is.na(x)) > threshold  || sum(x=="") > threshold)
+train <- train[, below.threshold]
+
+# for training data, remove columns with zero variance values
+nzv.table <- nearZeroVar(train, saveMetrics = TRUE)
+train <- train[, nzv.table$nzv==FALSE]
+
+# make classe, the goal of prediction as factor
+train$classe = factor(train$classe)
+
+# prepare train and test (cross validation) sets
+inTrain <- createDataPartition(train$classe, p = 0.6)[[1]]
+train <- train[ inTrain,]
+crossv <- train[-inTrain,]
+
+# prepare subtrain and subtest sets from the cross validation data
+inTrain <- createDataPartition(crossv$classe, p = 0.75)[[1]]
+crossv_train <- crossv[inTrain,]
+crossv_test <- crossv[ -inTrain,]
+
+# for test data, remove columns with more than 95% NA/empty values and near zero variance 
+test <- test[, below.threshold]
+test$classe <- NA
+test <- test[, nzv.table$nzv==FALSE]
+```
+
+
+## Machine Learning
+
+Three models (namely Random Forest, generalized boosting regression models and linear discriminant analysis) are trained. Then, predictions and confusion matrices are made based on them. 
+
+```{r, echo=TRUE}
+# train 3 different models
+train.rf <- train(classe ~ ., data=train, method="rf", verbose = F)
+train.gbm <- train(classe ~ ., data=train, method="gbm", verbose = F)
+train.lda <- train(classe ~ ., data=train, method="lda", verbose = F)
+
+# predict outcomes based on the 3 models
+predict.rf <- predict(train.rf, crossv_train)
+predict.gbm <- predict(train.gbm, crossv_train)
+predict.lda <- predict(train.lda, crossv_train)
+
+# show confusion matrices
+confusionMatrix(predict.rf, crossv_train$classe)
+confusionMatrix(predict.gbm, crossv_train$classe)
+confusionMatrix(predict.lda, crossv_train$classe)
+```
+
+Random forest has the highest overall accuracy among the three models and will be chosen as the sole model in this study.
+
+
+## Results
+
+Below are the prediction results: 
+
+```{r, echo = TRUE}
+prediction.result <- predict(train.rf, test)
+prediction.result
+```
+
+## Conclusion
+
+From this project, we can see that Random Forest shows extremely accurate prediction results of how well the 6 users exercise. Even though combination models can be used to further improve its prediction accuracy but is not performed due to its diminishing return.
